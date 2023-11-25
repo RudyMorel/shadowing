@@ -79,8 +79,8 @@ def get_permutation(a: Sequence, b: Sequence):
 
 
 def split_equal_sum(li: List[int], r: int) -> Tuple[List[List[int]], List[List[int]]]:
-    sublists = OrderedDict({s: [] for s in range(r)})
-    subindices = OrderedDict({s: [] for s in range(r)})
+    sublists = OrderedDict[{s: [] for s in range(r)}]
+    subindices = OrderedDict[{s: [] for s in range(r)}]
     sums = np.zeros((r,))
 
     li = np.array(li)

@@ -164,7 +164,7 @@ class DescribedTensor:  # todo : should inherit both tensor and idxinfo ?
             return self.y[:, mask, ...]
         out_non_pivot = self.reduce(**kwargs)  # TODO. Replace reduce by mask on Description object directly
         possible_values = np.unique(out_non_pivot.descri.to_array(pivot))
-        d = OrderedDict({val: [] for val in possible_values})
+        d = OrderedDict[{val: [] for val in possible_values}]
         for i, val in enumerate(out_non_pivot.descri[pivot]):
             d[val].append(i)
         return torch.stack([out_non_pivot.y[:, val, ...] for val in d.values()])
