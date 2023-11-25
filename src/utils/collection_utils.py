@@ -1,6 +1,7 @@
 """ Utils function for manipulating collections. """
 from typing import *
 from functools import reduce
+from collections import OrderedDict
 import itertools
 import numpy as np
 import pandas as pd
@@ -79,8 +80,8 @@ def get_permutation(a: Sequence, b: Sequence):
 
 
 def split_equal_sum(li: List[int], r: int) -> Tuple[List[List[int]], List[List[int]]]:
-    sublists = OrderedDict[{s: [] for s in range(r)}]
-    subindices = OrderedDict[{s: [] for s in range(r)}]
+    sublists = OrderedDict({s: [] for s in range(r)})
+    subindices = OrderedDict({s: [] for s in range(r)})
     sums = np.zeros((r,))
 
     li = np.array(li)
