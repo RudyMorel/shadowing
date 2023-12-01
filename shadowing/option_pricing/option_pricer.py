@@ -1,12 +1,12 @@
-from typing import *
+from typing import Tuple, Callable
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from scipy.optimize import brentq
 
-from src.data_source import PriceData
-from src.option_pricing.black_scholes import price_BS
-from src.option_pricing.smile import Smile
-from src.utils import Uniform
+from scatspectra.data_source import PriceData
+from shadowing.option_pricing.black_scholes import price_BS
+from shadowing.option_pricing.smile import Smile
+from shadowing.utils import DiscreteProba, Uniform
 
 
 def implied_vol(price: float, K: float, T: float, S0: float, r: float, ignore_warning=False) -> float:
@@ -24,9 +24,9 @@ def implied_vol(price: float, K: float, T: float, S0: float, r: float, ignore_wa
 class HMCPricer:
     def __init__(self,
                  M: int,
-                 ave: Optional = None,
-                 detrend: Optional[bool] = False,
-                 K_bounds: Optional[list] = None,
+                 ave: DiscreteProba | None = None,
+                 detrend: bool | None = False,
+                 K_bounds: list | None = None,
                  basis_func_method: str = 'piecewise_quadratic'):
         self.ave = ave or Uniform()
         self.M = M
@@ -62,8 +62,8 @@ class HMCPricer:
                           x_curr: np.ndarray,
                           x_prev: np.ndarray,
                           discount: float,
-                          param_curr: Optional[np.ndarray],
-                          price_curr: Optional[np.ndarray]
+                          param_curr: np.ndarray | None,
+                          price_curr: np.ndarray | None
                           ) -> np.ndarray:
         """ From param_curr get param_prev. They are obtained by linear regression of price_curr
         against previous price + previous hedge. """

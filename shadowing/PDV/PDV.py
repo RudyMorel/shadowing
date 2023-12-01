@@ -1,18 +1,19 @@
+from typing import Dict, List, Tuple
 import numpy as np
 from sklearn.linear_model import LinearRegression
 
-from src.utils import windows
+from shadowing.utils import windows
 
 
-def kernel_pl(taus, delta, alpha):
+def kernel_pl(taus: np.ndarray, delta: float, alpha: float):
     return (taus + delta) ** (-alpha)
 
 
-def kernel_exp(taus, lam):
+def kernel_exp(taus: np.ndarray, lam: float):
     return lam * np.exp(-lam * taus)
 
 
-def get_RV(x, from_dln=False):
+def get_RV(x: np.ndarray, from_dln: bool = False):
     """ Given prices x computes realized volatility. """
     if from_dln:
         annualizer = x.shape[-1] / 252
@@ -34,7 +35,15 @@ DEFAULT2 = {
 
 
 class AutoregressiveVolModel:
-    def __init__(self, T, w, s, dt, ktype, k1_dict=None, k2_dict=None):
+
+    def __init__(self, 
+                 T: int, 
+                 w: int, 
+                 s: int, 
+                 dt: int, 
+                 ktype: str, 
+                 k1_dict: Dict | None = None, 
+                 k2_dict: Dict | None = None):
         self.T = T  # number of days
         self.w = w  # number of dts in the past
         self.s = s  # training stride periods
@@ -52,7 +61,11 @@ class AutoregressiveVolModel:
         self.linreg = LinearRegression(fit_intercept=False)
 
     @staticmethod
-    def init_exp_kernel_2_factors(w, dt, lam0, lam1, theta):
+    def init_exp_kernel_2_factors(w: int, 
+                                  dt: int, 
+                                  lam0: float, 
+                                  lam1: float, 
+                                  theta: float):
         taus = np.arange(w)[::-1] * dt
 
         k0 = kernel_exp(taus, lam=lam0)
@@ -64,13 +77,16 @@ class AutoregressiveVolModel:
         return kernel
 
     @staticmethod
-    def init_pl_kernel(w, dt, delta, alpha):
+    def init_pl_kernel(w: int, 
+                       dt: float, 
+                       delta: float, 
+                       alpha: float):
         """ Given offset and exponent of a power law, return the kernel. """
         taus = np.arange(w)[::-1] * dt
         kernel = kernel_pl(taus, delta=delta, alpha=alpha)
         return kernel * 252 / kernel.sum()
 
-    def separate(self, x):
+    def separate(self, x: np.ndarray):
         """ Window time-series x. """
         assert x.ndim == 1
         w_params = {'w': self.w + 1 + self.T + 1, 's': self.s, 'offset': 0}
@@ -82,14 +98,16 @@ class AutoregressiveVolModel:
         return idx_x, idx_y, x_train, y_train
 
     @staticmethod
-    def apply_kernel(dlnx, k1, k2):
+    def apply_kernel(dlnx: np.ndarray, 
+                     k1: np.ndarray, 
+                     k2: np.ndarray):
         assert dlnx.shape[-1] == k1.size == k2.size
         R1t = (dlnx * k1).sum(-1)
         R2t = ((dlnx ** 2) * k2).sum(-1) ** 0.5
 
         return np.stack([np.ones_like(R1t), R1t, R2t], axis=-1)
 
-    def train(self, x):
+    def train(self, x: np.ndarray):
         """ x should be of granularity dt """
         # preparing input
         _, _, dlnx, y = self.separate(x)
@@ -98,7 +116,7 @@ class AutoregressiveVolModel:
         # linear regression
         self.linreg.fit(X, y)
 
-    def predict(self, x):
+    def predict(self, x: np.ndarray):
         # preparing input
         if x.ndim == 1:
             _, _, dlnx, _ = self.separate(x)
@@ -110,10 +128,10 @@ class AutoregressiveVolModel:
 
 class PDVModel:
     def __init__(self,
-                 lams1,
-                 lams2,
-                 thetas,
-                 betas):
+                 lams1: List[float],
+                 lams2: List[float],
+                 thetas: List[float],
+                 betas: List[float]):
         """
         lams1: parameters of kernel on dx
         lams2: parameters of kernel on |dx|^2
@@ -123,15 +141,15 @@ class PDVModel:
         self.thetas = np.array(thetas)  # kernel mixing parameter
         self.betas = np.array(betas)  # regressive vol weight
 
-    def gen_dw(self, size, m, s):
+    def gen_dw(self, size: Tuple, m: float, s: float):
         """ White noise source of randomness. """
         return m + s * np.random.randn(size)
 
-    def mixing(self, theta, X):
+    def mixing(self, theta: float, X: np.ndarray):
         """ Convex combination of X. """
         return (1 - theta) * X[0] + theta * X[1]
 
-    def sigma(self, R1, R2):
+    def sigma(self, R1: np.ndarray, R2: np.ndarray):
         """ Regressive model of sigma along factor R1 on past returns and R2 on past vols. """
         r1 = self.mixing(self.thetas[0], R1)
         r2 = self.mixing(self.thetas[1], R2)
@@ -139,14 +157,23 @@ class PDVModel:
         # return np.clip(sigma, -1e16, 1.5)
         return np.clip(sigma, 0.0, 1.5)
 
-    def actualize_factors(self, R1, R2, dt, dwt):
+    def actualize_factors(self, 
+                          R1: np.ndarray, 
+                          R2: np.ndarray, 
+                          dt: float, 
+                          dwt: np.ndarray):
         """ Apply exponential kernel on factors. """
         sigma_curr = self.sigma(R1, R2)
         dR1 = (sigma_curr * dwt - R1 * dt) * self.lams1
         dR2 = (sigma_curr ** 2 - R2) * dt * self.lams2
         return R1 + dR1, R2 + dR2
 
-    def gen(self, T, dt, S0, R10, R20):
+    def gen(self, 
+            T: int, 
+            dt: float, 
+            S0: float, 
+            R10: np.ndarray, 
+            R20: np.ndarray):
         """ Generate an instanteneous path sigma_t and price path S_t. """
         n_steps = int(T / dt)
         S = np.ones(n_steps) * S0
@@ -164,9 +191,12 @@ class PDVModel:
             S[t] = S[t-1] * (1 + sigma[t] * dwt)
             R1_curr, R2_curr = self.actualize_factors(R1_curr, R2_curr, dt, dwt)
         return sigma, S
+    
 
-
-def compute_factor(x_past, pdv_model, w, dt):
+def compute_factor(x_past: np.ndarray, 
+                   pdv_model: PDVModel, 
+                   w: int, 
+                   dt: float):
     """ Given past trajectory, compute initial factors. """
     dlnx = np.diff(np.log(x_past))
 
@@ -190,7 +220,13 @@ def compute_factor(x_past, pdv_model, w, dt):
     return R10, R20
 
 
-def future_pdv_model(x_past, pdv_model, w, S0, S, T, dt):
+def future_pdv_model(x_past: np.ndarray, 
+                     pdv_model: PDVModel, 
+                     w: int, 
+                     S0: float, 
+                     S: int, 
+                     T: int, 
+                     dt: float):
     """ Given past trajectory, compute initial factors at present and return trajectories. """
     R10, R20 = compute_factor(x_past, pdv_model, w, dt)
 

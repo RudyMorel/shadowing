@@ -1,27 +1,30 @@
+from typing import List, Callable
+from abc import abstractmethod
 import numpy as np
 
 
 class PathEmbedding:
 
-    name = None
+    name = None 
 
-    def __call__(self, x):
+    @abstractmethod
+    def __call__(self, x: np.ndarray) -> np.ndarray:
         pass
-
-    def astype(self, dtype):
-        return self
 
     def get_unique_name(self):
         return self.name
 
 
 class CustomEmbedding(PathEmbedding):
-    def __init__(self, custom_name, custom_embedding):
+
+    def __init__(self, 
+                 custom_name: str, 
+                 custom_embedding: Callable):
         super(CustomEmbedding, self).__init__()
         self.name = custom_name
         self.custom_embedding = custom_embedding
 
-    def __call__(self, x):
+    def __call__(self, x: np.ndarray) -> np.ndarray:
         return self.custom_embedding(x)
 
 
@@ -29,11 +32,11 @@ class Identity(PathEmbedding):
 
     name = "identity"
 
-    def __init__(self, dim):
+    def __init__(self, dim: int):
         super(Identity, self).__init__()
         self.dim = dim
 
-    def __call__(self, x):
+    def __call__(self, x: np.ndarray):
         return x[..., -self.dim:]
 
 
@@ -41,11 +44,13 @@ class AverageVol(PathEmbedding):
 
     name = "avgvol"
 
-    def __call__(self, x):
+    def __call__(self, x: np.ndarray):
         return (256 * (x ** 2).mean(-1, keepdims=True)) ** 0.5
 
 
-def foveal_embedding(x, slices, beta):
+def foveal_embedding(x: np.ndarray, 
+                     slices: List[slice], 
+                     beta):
     multi_scale_past_averages = np.empty((*x.shape[:-1], len(slices)), dtype=x.dtype)
     norms = np.empty(len(slices), dtype=x.dtype)
     for i_sl, sl in enumerate(slices):
@@ -60,7 +65,10 @@ class FovealDisjoint(PathEmbedding):
 
     name = "foveal_disjoint"
 
-    def __init__(self, alpha, beta, cut):
+    def __init__(self, 
+                 alpha: float, 
+                 beta: float, 
+                 cut: int):
         super(FovealDisjoint, self).__init__()
         if alpha < 1.0:
             raise ValueError("Alpha should be >= 1.0 in Foveal model.")
@@ -87,7 +95,7 @@ class FovealDisjoint(PathEmbedding):
     def get_unique_name(self):
         return self.name + f'_alpha{self.alpha:.3f}_beta{self.beta:.3f}_cut{self.cut}'.replace('.', '_')
 
-    def __call__(self, x):
+    def __call__(self, x: np.ndarray):
         """ Return multiscale averages of x on past consecutive dyadic periods. """
         if -self.slices[-1].start > x.shape[-1]:
             raise ValueError("Path is too short for this Multiscale embedding, try to reduce dyadic_size or offset.")
@@ -96,9 +104,13 @@ class FovealDisjoint(PathEmbedding):
 
 
 class FovealFixed(PathEmbedding):
+    
     name = "foveal_fixed"
 
-    def __init__(self, alpha, beta, cut):
+    def __init__(self, 
+                 alpha: float, 
+                 beta: float, 
+                 cut: int):
         super(FovealFixed, self).__init__()
         self.alpha = alpha
         self.beta = beta
@@ -112,7 +124,7 @@ class FovealFixed(PathEmbedding):
     def get_unique_name(self):
         return self.name + f'_alpha{self.alpha:.3f}_beta{self.beta:.3f}_cut{self.cut}'.replace('.', '_')
 
-    def __call__(self, x):
+    def __call__(self, x: np.ndarray):
         """ Return multiscale averages of x on past consecutive dyadic periods. """
         if -self.slices[-1].start > x.shape[-1]:
             raise ValueError("Path is too short for this Multiscale embedding, try to reduce dyadic_size or offset.")

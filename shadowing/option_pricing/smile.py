@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from src.utils import lighten_color
-from src.option_pricing import price_BS
+from shadowing.utils import lighten_color
+from shadowing.option_pricing import price_BS
 
 
 class Smile:
