@@ -26,7 +26,7 @@ def to_predict(x: np.ndarray,
 
 class PathShadowing:
     def __init__(self,
-                 x_past: np.ndarray,
+                 dlnx_past: np.ndarray,
                  dataset: Path | TimeSeriesDataset, 
                  S: int,
                  cache_path: Path,
@@ -34,24 +34,24 @@ class PathShadowing:
                  n_splits : int = 1,
                  verbose: bool = False):
         """
-        :param x_past: shape (B, T), B time-series to do prediction on
+        :param dlnx_past: shape (B, T), B time-series to do prediction on
         :param dataset_path: path of the generated dataset or the dataset iteself
         :param dirname: prefix name of the cache directory
         :param n_splits: number of splits of the dataset, does not impact 
             prediction results. Increase it for reducing memory usage.
         :param verbose:
         """
-        self.x_past = x_past.astype(np.float32)
-        self.n_dates, self.w_past = x_past.shape
+        self.dlnx_past = dlnx_past.astype(np.float32)
+        self.n_dates, self.w_past = dlnx_past.shape
 
-        # dataset used to "shadow" x_past 
+        # dataset used to "shadow" dlnx_past 
         if isinstance(dataset, Path):
             dataset = TimeSeriesDataset(dpath=dataset, R=S, load=False)
         self.dataset = dataset
         self.S = S
         if self.dataset.R < S:
             raise Exception(f"Dataset contains only R={self.dataset.R} < S={S} time-series.")
-        self._T_max = dataset.T  # T_max: length of a generated time-series in the dataset
+        self._T_max = dataset.T - 1  # T_max: length of a generated log-return time-series in the dataset
 
         # partition dataset for memory purpose
         self.datasets = self.dataset.split(num_splits=n_splits)
@@ -79,20 +79,20 @@ class PathShadowing:
             self.cache_path.mkdir(parents=True)
 
         # create sub-cache directories for each time-series to shadow
-        self.subcache_paths = [self.cache_path / self.get_main_dirname(x) for x in self.x_past]
+        self.subcache_paths = [self.cache_path / self.get_main_dirname(x) for x in self.dlnx_past]
         for dpath in self.subcache_paths:
             dpath.mkdir(exist_ok=True)
 
         return self.cache_path, self.subcache_paths
 
     @staticmethod
-    def get_main_dirname(single_x_past: np.ndarray) -> str:
-        """ Encode x_past -> string. """
+    def get_main_dirname(single_dlnx_past: np.ndarray) -> str:
+        """ Encode dlnx_past -> string. """
         np.random.seed(0)
-        key = np.random.randn(single_x_past.size).astype(single_x_past.dtype)
-        code1 = np.dot(single_x_past / single_x_past.std(), key)
-        idx = np.random.randint(single_x_past.size)
-        code2 = single_x_past[idx]
+        key = np.random.randn(single_dlnx_past.size).astype(single_dlnx_past.dtype)
+        code1 = np.dot(single_dlnx_past / single_dlnx_past.std(), key)
+        idx = np.random.randint(single_dlnx_past.size)
+        code2 = single_dlnx_past[idx]
         np.random.seed(None)
 
         to_remove = ['-', '+', 'e', '.']
@@ -117,7 +117,7 @@ class PathShadowing:
                     distance: PathDistance, 
                     n_paths: int, 
                     horizon: int) -> None:
-        """ Erase global directories corresponding to past paths self.x_past and syntheses directory self.spath. """
+        """ Erase global directories corresponding to past paths self.dlnx_past and syntheses directory self.spath. """
         if self.subcache_paths is None:
             return
         for path in self.subcache_paths:
@@ -181,11 +181,11 @@ class PathShadowing:
     @staticmethod
     def path_distance(embedding: PathEmbedding, 
                       distance: PathDistance, 
-                      x_past: np.ndarray, 
-                      x_synt_past: np.ndarray) -> np.ndarray:
+                      dlnx_past: np.ndarray, 
+                      dlnx_gen_past: np.ndarray) -> np.ndarray:
         return distance(
-            embedding(x_past),
-            embedding(x_synt_past)
+            embedding(dlnx_past),
+            embedding(dlnx_gen_past)
         )
 
     def need_to_create_cache(self, 
@@ -201,7 +201,7 @@ class PathShadowing:
 
             dirpath = single_dpath / self.get_dname(self.S, embedding, distance, n_paths, horizon)
 
-            # filenames of dist, path for this single_x_past and this batch of syntheses
+            # filenames of dist, path for this single_dlnx_past and this batch of syntheses
             distance_fpath = self._dist_fpath(dirpath, None, None)
             locator_fpath = self._loc_fpath(dirpath, None, None)
 
@@ -213,28 +213,28 @@ class PathShadowing:
 
     def _create_cache_worker(self, 
                              i_t: int, 
-                             x_synt_w: np.ndarray, 
+                             dlnx_gen: np.ndarray, 
                              b: int,
                              embedding: PathEmbedding, 
                              distance: PathDistance,
                              n_paths: int, 
                              horizon: int) -> None:
-        """ Compute distances and closest paths for a single x_past. """
+        """ Compute distances and closest paths for a single dlnx_past. """
         try:
-            n_traj = x_synt_w.shape[0]
+            n_traj = dlnx_gen.shape[0]
 
             dirpath = self.subcache_paths[i_t] / self.get_dname(self.S, embedding, distance, n_paths, horizon)
-            single_x_past = self.x_past[i_t, :]
+            single_dlnx_past = self.dlnx_past[i_t, :]
 
             # skip if cache file already exists
             for bp in range(b, self.B):
                 if self._dist_fpath(dirpath, bp, self.B).is_file():
                     return
 
-            # compute distances with any path in x_synt
+            # compute distances with any path in dlnx_gen
             distances = np.empty((n_traj, self._T_max), dtype=np.float32)
             #TODO: this may be optimized through matrix multiplication or on gpu
-            distances[:, :-self.w_past+1] = self.path_distance(embedding, distance, single_x_past, x_synt_w)  # n_traj x ..
+            distances[:, :-self.w_past+1] = self.path_distance(embedding, distance, single_dlnx_past, dlnx_gen)  # n_traj x ..
             mask_edge_effect = np.tile(np.arange(self._T_max) <= self._T_max-self.w_past-horizon, (n_traj, 1))
             distances[~mask_edge_effect] = np.inf
 
@@ -244,8 +244,8 @@ class PathShadowing:
             offset_this_b = sum([dtst.R for dtst in self.datasets[:b]])
             locators_this_b = np.array([(i//self._T_max + offset_this_b, i%self._T_max) for i in idces_this_b], dtype=np.int32)
 
-            if not distances.dtype == single_x_past.dtype == x_synt_w.dtype:
-                raise ValueError(f"Inconsistent dtypes ({distances.dtype},{single_x_past.dtype},{x_synt_w.dtype}) "
+            if not distances.dtype == single_dlnx_past.dtype == dlnx_gen.dtype:
+                raise ValueError(f"Inconsistent dtypes ({distances.dtype},{single_dlnx_past.dtype},{dlnx_gen.dtype}) "
                                 f"may lead to overtimes.")
 
             # get smallest n_paths distances from all preceding batches
@@ -277,9 +277,9 @@ class PathShadowing:
         """ Compute distances and locators. """
         # loop over batch of syntheses
         if self.verbose:
-            print(f"Nb batches: {self.B}, "
-                  f"Avg batch size: {self.S / self.B:.0f} (syntheses), "
-                  f"Avg per batch {self.S / self.B * (self._T_max-self.w_past):,.0f} (paths of size {self.w_past})")
+            print(f"Nb dataset splits: {self.B}, "
+                  f"Avg split size: {self.S / self.B:.0f} (syntheses), "
+                  f"Avg per split {self.S / self.B * (self._T_max-self.w_past):,.0f} (paths of size {self.w_past})")
 
         exp_name = self.get_dname(self.S, embedding, distance, n_paths, horizon)
         for main_path in self.subcache_paths:
@@ -287,32 +287,33 @@ class PathShadowing:
 
         for b, dataset in enumerate(tqdm(self.datasets, desc='Synthesis batch')):
             # Prepare all subpaths for this batch of syntheses
-            x_synt = dataset.load()[:,0,:].astype(np.float32)  # n_traj x T
-            x_synt_w = windows(x_synt, w=self.w_past, s=1)  # n_traj x Q x w_past
+            lnx_gen = dataset.load()[:,0,:].astype(np.float32)
+            dlnx_gen = np.diff(lnx_gen)  # n_traj x T
+            dlnx_gen_w = windows(dlnx_gen, w=self.w_past, s=1)  # n_traj x Q x w_past
 
             # multiprocessed computation for each prediction date
-            worker_create_partial = partial(self._create_cache_worker, x_synt_w=x_synt_w, b=b,
+            worker_create_partial = partial(self._create_cache_worker, dlnx_gen=dlnx_gen_w, b=b,
                                             embedding=embedding, distance=distance,
                                             n_paths=n_paths, horizon=horizon)
-            if self.x_past.shape[0] == 1:
-                for i_t in range(self.x_past.shape[0]):
+            if self.dlnx_past.shape[0] == 1:
+                for i_t in range(self.dlnx_past.shape[0]):
                     worker_create_partial(i_t)
             else:
                 with WorkerPool(n_jobs=num_workers) as pool:
-                    for _ in pool.map(worker_create_partial, list(range(self.x_past.shape[0])), progress_bar=pbar,
+                    for _ in pool.map(worker_create_partial, list(range(self.dlnx_past.shape[0])), progress_bar=pbar,
                                       progress_bar_options={'desc': 'Prediction date'}):
                         pass
 
     def _load_cache_worker(self, 
                            i_t: int, 
-                           x_synt_all: np.ndarray, 
+                           dlnx_gen_all: np.ndarray, 
                            embedding: PathEmbedding, 
                            distance: PathDistance, 
                            n_paths: int, 
                            horizon: int):
         try:
             ts = np.arange(self.w_past + horizon)
-            single_x_past = self.x_past[i_t, :]
+            single_dlnx_past = self.dlnx_past[i_t, :]
             dirpath = self.subcache_paths[i_t] / self.get_dname(self.S, embedding, distance, n_paths, horizon)
 
             # load distances
@@ -324,11 +325,11 @@ class PathShadowing:
             locators = self._load_loc(dirpath, None, None)  # (s, t)
             locators = locators[:, 0] * self._T_max + locators[:, 1]
             indices = locators[:, None] + ts[None, :]
-            paths_this_date = x_synt_all[indices].reshape(-1, ts.size)
+            paths_this_date = dlnx_gen_all[indices].reshape(-1, ts.size)
 
             # check # TODO: Remove checks at some point.
             assert not np.isinf(distances_this_date).any(), "Error, should not find np.inf values in distances."
-            test_dist = self.path_distance(embedding, distance, single_x_past, paths_this_date[:, :self.w_past])
+            test_dist = self.path_distance(embedding, distance, single_dlnx_past, paths_this_date[:, :self.w_past])
             assert array_equal(distances_this_date, test_dist, 1e-3), \
                 f"Inconsistency in closest paths selection on {distances_this_date.size} paths"
 
@@ -343,8 +344,8 @@ class PathShadowing:
                n_paths: int,
                horizon: int,
                num_workers: int):
-        """ Load distances and closest paths to x_past. """
-        x_synt_all = self.dataset.load()[:,0,:].astype(np.float32).ravel()
+        """ Load distances and closest paths to dlnx_past. """
+        dlnx_gen_all = np.diff(self.dataset.load())[:,0,:].astype(np.float32).ravel()
 
         # create cache if not present
         if self.need_to_create_cache(embedding, distance, n_paths, horizon):
@@ -359,24 +360,24 @@ class PathShadowing:
         # multiprocessed loading for each prediction date
         distances_l = []
         paths_l = []
-        worker = partial(self._load_cache_worker, x_synt_all=x_synt_all,
+        worker = partial(self._load_cache_worker, dlnx_gen_all=dlnx_gen_all,
                          embedding=embedding, distance=distance,
                          n_paths=n_paths, horizon=horizon)
-        if self.x_past.shape[0] == 1:
-            for i_t in range(self.x_past.shape[0]):
+        if self.dlnx_past.shape[0] == 1:
+            for i_t in range(self.dlnx_past.shape[0]):
                 _, distances, paths = worker(i_t)
                 distances_l.append(distances)
                 paths_l.append(paths)
         else:
             job_id = []
             with WorkerPool(n_jobs=num_workers) as pool:
-                for result in pool.map(worker, list(range(self.x_past.shape[0])),
+                for result in pool.map(worker, list(range(self.dlnx_past.shape[0])),
                                        progress_bar=True, progress_bar_options={'desc': 'Prediction date'}):
                     i_t, distances, paths = result
                     job_id.append(i_t)
                     distances_l.append(distances)
                     paths_l.append(paths)
-            if job_id != list(range(self.x_past.shape[0])):
+            if job_id != list(range(self.dlnx_past.shape[0])):
                 raise ValueError("Workers did not return results in same order than prediction data")
 
         print("DONE.")
