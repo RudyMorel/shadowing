@@ -2,7 +2,15 @@ This repository implements Path Shadowing Monte-Carlo [1], which can be used for
 
 This methods averages future quantities over generated price paths whose past history matches, or `shadows', the actual (observed) history.
 
+<p align="center">
+<figure>
+![shadowing](./illustration/anim_shadowing.gif)
+    <!-- <img src="https://media.giphy.com/media/vFKqnCdLPNOKc/giphy.gif" alt="animated"> -->
+<figcaption> Simple shadowing example. Red: observed S&P daily log-returns, 
 
+grey (shadow): visualization of collected shadowing paths from our model. </figcaption>
+</figure>
+</p>
 
 # Prediction / Option pricing
 
