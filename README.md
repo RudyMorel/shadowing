@@ -1,17 +1,11 @@
-This repository implements Path Shadowing Monte-Carlo [1], which can be used for volatility prediction and option pricing.
+Implements Path Shadowing Monte-Carlo [1], which can be used for volatility prediction and option pricing.
 
-This methods averages future quantities over generated price paths whose past history matches, or `shadows', the actual (observed) history.
+This methods averages future quantities over generated price paths (grey) whose past history matches, or `shadows', the actual observed history (red).
 
 <p align="center">
 <figure>
-    <img src="./illustration/anim_shadowing.gif" alt="animated" width="200px">
-<figcaption> Simple shadowing illustration. 
-
-Red: observed S&P daily log-returns, 
-\
-grey (shadow): visualization of collected 
-\
-shadowing paths from our model. </figcaption>
+    <img src="./illustration/anim_shadowing.gif" alt="animated" width="400px">
+<figcaption> Title. Simple shadowing illustration. </figcaption>
 </figure>
 </p>
 
