@@ -4,7 +4,6 @@ This methods averages future quantities over generated price paths (grey) whose 
 
 <p align="center">
     <img src="./illustration/anim_shadowing.gif" alt="animated" width="400px"/>
-    <center> Figure. Shadowing illustration. </center>
 </p>
 
 # Prediction / Option pricing
