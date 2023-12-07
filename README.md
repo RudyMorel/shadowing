@@ -4,7 +4,7 @@ This methods averages future quantities over generated price paths whose past hi
 
 <p align="center">
 <figure>
-![shadowing](./illustration/anim_shadowing.gif)
+    <img src="./illustration/anim_shadowing.gif" alt="animated">
     <!-- <img src="https://media.giphy.com/media/vFKqnCdLPNOKc/giphy.gif" alt="animated"> -->
 <figcaption> Simple shadowing example. Red: observed S&P daily log-returns, 
 
