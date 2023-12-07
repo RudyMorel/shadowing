@@ -3,10 +3,8 @@ Implements Path Shadowing Monte-Carlo [1], which can be used for volatility pred
 This methods averages future quantities over generated price paths (grey) whose past history matches, or `shadows', the actual observed history (red).
 
 <p align="center">
-<figure>
-    <img src="./illustration/anim_shadowing.gif" alt="animated" width="400px">
-<figcaption> Title. Simple shadowing illustration. </figcaption>
-</figure>
+    <img src="./illustration/anim_shadowing.gif" alt="animated" width="400px"/>
+    <center> Figure. Shadowing illustration. </center>
 </p>
 
 # Prediction / Option pricing
