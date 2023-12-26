@@ -2,17 +2,6 @@ import numpy as np
 from scipy.signal import convolve as sci_convolve
 
 
-def get_smallest(a, k):
-    """ Extract k smallest elements and their indices, not necessarily sorted. """
-    if a.ndim != 1:
-        raise ValueError("Array should be 1d.")
-    if k > a.size:
-        raise ValueError(f"Cannot get {k} smallest elements on array of size {a.size}.")
-    # TODO. Test this function
-    idces = np.argpartition(a, k)
-    return idces[:k], a[idces[:k]]
-
-
 def windows(x, w, s, offset=0, cover_end=False):
     """ Separate x into windows on last axis, discard any residual. """
     if offset > 0 and cover_end:
@@ -25,28 +14,6 @@ def windows(x, w, s, offset=0, cover_end=False):
     nrows = 1 + (x.shape[-1] - w) // s
     n = x.strides[-1]
     return np.lib.stride_tricks.as_strided(x, shape=x.shape[:-1]+(nrows,w), strides=x.strides[:-1]+(s*n,n))
-
-
-# def multiple_slice_sum(x, slices, avg):
-#     """
-#     Compute averages of x on windows given by ws
-#
-#     :param x: array of shape (C) x T
-#     :param wx: list of indices in [0,T-1]
-#     :return:
-#     """
-#     projs = np.zeros((len(slices), x.shape[-1]))
-#     for i_w, sl in enumerate(slices):
-#         projs[i_w, sl] = 1.0
-#     counts = np.sum(projs, axis=1)
-#
-#     # import pdb
-#     # pdb.set_trace()
-#
-#     sums = (projs * x[..., None, :]).sum(-1)
-#     if avg:
-#         return sums / counts
-#     return sums
 
 
 def shifted_product_aux(x, y):

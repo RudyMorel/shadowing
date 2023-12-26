@@ -1,139 +1,178 @@
-from typing import List, Callable
-from abc import abstractmethod
+from typing import Tuple
 import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from einops import rearrange
 
 
-class PathEmbedding:
-
-    name = None 
-
-    @abstractmethod
-    def __call__(self, x: np.ndarray) -> np.ndarray:
-        pass
-
-    def get_unique_name(self):
-        return self.name
+ArrayType = np.ndarray | torch.Tensor
 
 
-class CustomEmbedding(PathEmbedding):
+class ContextBase:
+    """ Base class for context objects.
+    A context is an object which, given a full context data 
+    (e.g. prediction: past+future) can return only the in-context data
+    (e.g. prediction: past) or only out-context data (e.g. prediction: future)
+
+    :raises NotImplementedError: _description_
+    :raises NotImplementedError: _description_
+    :raises NotImplementedError: _description_
+    :raises NotImplementedError: _description_
+    """
+
+    def select_in_context(self, x: ArrayType) -> ArrayType:
+        raise NotImplementedError
+
+    def select_out_context(self, x: ArrayType) -> ArrayType:
+        raise NotImplementedError
+
+    def pad_context(self, x_context: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
+
+    def get_out_times(self):
+        raise NotImplementedError
+
+#TODO: simplify the derived context classes to just defining a 2d mask
+class PredictionContext(ContextBase):
 
     def __init__(self, 
-                 custom_name: str, 
-                 custom_embedding: Callable):
-        super(CustomEmbedding, self).__init__()
-        self.name = custom_name
-        self.custom_embedding = custom_embedding
+                 horizon: int | None = None,
+                 **kwargs):
+        self.horizon = horizon
 
-    def __call__(self, x: np.ndarray) -> np.ndarray:
-        return self.custom_embedding(x)
+    def select_in_context(self, x: ArrayType) -> ArrayType:
+        if self.horizon is None:
+            return x
+        return x[..., :-self.horizon]
+    
+    def select_out_context(self, x: ArrayType) -> ArrayType:
+        if self.horizon is None:
+            return x
+        return x[..., -self.horizon:]
+
+    def pad_context(self, x_context: torch.Tensor) -> torch.Tensor:
+        if self.horizon is None:
+            return x_context
+        return F.pad(x_context, (0, self.horizon))
+
+    def get_out_times(self):
+        if self.horizon is None:
+            return 0
+        return self.horizon
+    
+
+class ImputationContext(ContextBase):
+    
+    def __init__(self, 
+                 portion: Tuple | None = None):
+        self.portion = portion
+
+    def select_in_context(self, x: ArrayType) -> ArrayType:
+        if self.portion is None:
+            return x
+        l, _, r = self.portion
+        return np.concatenate([x[...,:l], x[..., -r:]], axis=-1)
+    
+    def slect_out_context(self, x: ArrayType) -> ArrayType:
+        if self.portion is None:
+            return x
+        l, _, r = self.portion
+        return x[..., l:-r]
+
+    def pad_context(self, x_context: torch.Tensor) -> torch.Tensor:
+        if self.portion is None:
+            return x_context
+        l, c, r = self.portion
+        x_left = x_context[...,:l]
+        x_right = x_context[...,-r:]
+        zeros_middle = x_context.new_zeros(x_context.shape[:-1]+(c,))
+        return torch.cat([x_left,zeros_middle,x_right], dim=-1)
+
+    def get_out_times(self):
+        if self.portion is None:
+            return 0
+        return self.portion[1]
+    
+
+class CrossChannelContext(ContextBase):
+    def __init__(self, 
+                 out_context_channels: int):
+        self.out_context_channels = out_context_channels
+
+    def select_in_context(self, x: ArrayType) -> ArrayType:
+        in_context_channels = x.shape[-2] - self.out_context_channels
+        return x[...,:in_context_channels,:]
+
+    def select_out_context(self, x: ArrayType) -> ArrayType:
+        if self.out_context_channels is None:
+            return x
+        return x[...,-self.out_context_channels:,:]
+    
+    def pad_context(self, x_context: torch.Tensor) -> torch.Tensor:
+        if self.out_context_channels is None:
+            return x_context
+        new_shape = list(x_context.shape)
+        new_shape[-2] = self.out_context_channels
+        zeros_up = x_context.new_zeros(new_shape)
+        return torch.cat([x_context,zeros_up], dim=-2)
+    
+    def get_out_times(self):
+        return 0
+    
+
+class PathEmbedding(nn.Module):
+    """ A class of linear embeddings. """
+
+    def __init__(self, kernel: torch.Tensor):
+        super().__init__()
+        self.register_buffer("kernel", kernel)  # shape (embedding_dim, 1, kernel_size)
+    
+    def adjust_to_context(self, context):
+        """ Adjust the kernel to the context. """
+        new_kernel = context.pad_context(self.kernel)
+        return PathEmbedding(new_kernel)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.conv1d(x, self.kernel)
+        x = rearrange(x, 'b d t -> b t d')
+        return x
 
 
 class Identity(PathEmbedding):
 
-    name = "identity"
+    def __init__(self):
+        super().__init__(torch.empty(0))
 
-    def __init__(self, dim: int):
-        super(Identity, self).__init__()
-        self.dim = dim
+    def adjust_to_context(self, mask_in_context):
+        return Identity()
 
-    def __call__(self, x: np.ndarray):
-        return x[..., -self.dim:]
-
-
-class AverageVol(PathEmbedding):
-
-    name = "avgvol"
-
-    def __call__(self, x: np.ndarray):
-        return (256 * (x ** 2).mean(-1, keepdims=True)) ** 0.5
+    def forward(self, x: np.ndarray):
+        return x
 
 
-def foveal_embedding(x: np.ndarray, 
-                     slices: List[slice], 
-                     beta):
-    multi_scale_past_averages = np.empty((*x.shape[:-1], len(slices)), dtype=x.dtype)
-    norms = np.empty(len(slices), dtype=x.dtype)
-    for i_sl, sl in enumerate(slices):
-        wx = x[..., sl]
-        n = wx.shape[-1]
-        multi_scale_past_averages[..., i_sl] = wx.sum(-1)
-        norms[i_sl] = n ** beta
-    return multi_scale_past_averages / norms
+class Foveal(PathEmbedding):
+    """ A foveal embedding: This embedding technique captures the context 
+    with varying levels of resolution. The closer the context is to the 
+    focal point (fovea) e.g. the present time, the higher the resolution, 
+    while the further away the context is, the lower the resolution. 
+    This approach allows for efficient representation of the context, 
+    with more emphasis on recent information. """
 
-
-class FovealDisjoint(PathEmbedding):
-
-    name = "foveal_disjoint"
-
-    def __init__(self, 
-                 alpha: float, 
-                 beta: float, 
-                 cut: int):
-        super(FovealDisjoint, self).__init__()
-        if alpha < 1.0:
-            raise ValueError("Alpha should be >= 1.0 in Foveal model.")
-
+    def __init__(self, alpha: float, beta: float, max_context: int):
         self.alpha = alpha
         self.beta = beta
-        self.cut = cut
+        self.max_context = max_context
 
-        dim = 1
-        slices = []
-        left, right = -1, None
-        slices.append(slice(left, right))
-        while True:
-            right = left
-            left = left - int(alpha ** dim)
-            if -left > cut:
-                break
-            slices.append(slice(left, right))
-            dim += 1
-
-        self.slices = slices
-        self.dim = len(slices)
-
-    def get_unique_name(self):
-        return self.name + f'_alpha{self.alpha:.3f}_beta{self.beta:.3f}_cut{self.cut}'.replace('.', '_')
-
-    def __call__(self, x: np.ndarray):
-        """ Return multiscale averages of x on past consecutive dyadic periods. """
-        if -self.slices[-1].start > x.shape[-1]:
-            raise ValueError("Path is too short for this Multiscale embedding, try to reduce dyadic_size or offset.")
-
-        return foveal_embedding(x, self.slices, self.beta)
-
-
-class FovealFixed(PathEmbedding):
-    
-    name = "foveal_fixed"
-
-    def __init__(self, 
-                 alpha: float, 
-                 beta: float, 
-                 cut: int):
-        super(FovealFixed, self).__init__()
-        self.alpha = alpha
-        self.beta = beta
-        self.cut = cut
-
-        self.dim = int(np.floor(np.log(cut) / np.log(alpha)))
+        self.dim = int(np.floor(np.log(max_context) / np.log(alpha)))
 
         lengths = [int(alpha ** n) for n in range(1, 1 + self.dim)]
         self.slices = [slice(-le, None) for le in lengths]
 
-    def get_unique_name(self):
-        return self.name + f'_alpha{self.alpha:.3f}_beta{self.beta:.3f}_cut{self.cut}'.replace('.', '_')
+        kernel = torch.zeros(self.dim, 1, max_context, dtype=torch.float32)
 
-    def __call__(self, x: np.ndarray):
-        """ Return multiscale averages of x on past consecutive dyadic periods. """
-        if -self.slices[-1].start > x.shape[-1]:
-            raise ValueError("Path is too short for this Multiscale embedding, try to reduce dyadic_size or offset.")
-        return foveal_embedding(x, self.slices, self.beta)
+        for isl, sl in enumerate(self.slices):
+            n = -sl.start
+            kernel[isl, :, sl] = n ** (-beta)
 
-
-EMBEDDING_CHOICE = {
-    Identity.name: Identity,
-    AverageVol.name: AverageVol,
-    FovealDisjoint.name: FovealDisjoint,
-    FovealFixed.name: FovealFixed,
-}
+        super().__init__(kernel)

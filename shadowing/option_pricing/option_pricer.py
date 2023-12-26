@@ -9,7 +9,14 @@ from shadowing.option_pricing.black_scholes import price_BS
 from shadowing.utils import DiscreteProba, Uniform, lighten_color
 
 
-def implied_vol(price: float, K: float, T: float, S0: float, r: float, ignore_warning=False) -> float:
+def implied_vol(
+    price: float,
+    K: float, 
+    T: float, 
+    S0: float, 
+    r: float, 
+    ignore_warning=False
+) -> float:
     """Given a price, compute the vol sigma in BS formula that matches this price."""
     a, b = 1e-6, 10.0
     func = lambda s: price_BS(K, T, s, S0, r) - price
@@ -22,6 +29,8 @@ def implied_vol(price: float, K: float, T: float, S0: float, r: float, ignore_wa
 
 
 class Smile:
+    """ A smile is a set of implied volatilities for different strikes 
+    and maturities."""
 
     def __init__(self, vol, Ts, Ks=None, rMness=None, date=None):
         """ Ts: 1d array, vol: list of 1d arrays, Ks: list of 1d arrays, Ms: list of 1d arrays """
@@ -147,7 +156,7 @@ class Smile:
     @staticmethod
     def load(file_path):
         ld = dict(np.load(file_path, allow_pickle=True))
-        # TODO. Temporary hack, remove it.
+        # TODO: Temporary hack, remove it.
         if "vol_impli" in ld:
             ld["vol"] = ld["vol_impli"]
             del ld["vol_impli"]
@@ -181,13 +190,16 @@ class Smile:
 
 
 class HMCPricer:
+    """ A class to price European options using Hedged Monte-Carlo (HMC). """
 
-    def __init__(self,
-                 M: int,
-                 ave: DiscreteProba | None = None,
-                 detrend: bool | None = False,
-                 K_bounds: list | None = None,
-                 basis_func_method: str = 'piecewise_quadratic'):
+    def __init__(
+        self,
+        M: int,
+        ave: DiscreteProba | None = None,
+        detrend: bool | None = False,
+        K_bounds: list | None = None,
+        basis_func_method: str = 'piecewise_quadratic'
+    ):
         self.ave = ave or Uniform()
         self.M = M
         self.detrend = detrend
@@ -217,14 +229,15 @@ class HMCPricer:
 
         return np.stack([2 * (x > k) * (x - k) for k in self.Ks])
 
-    def perform_iteration(self,
-                          it: int,
-                          x_curr: np.ndarray,
-                          x_prev: np.ndarray,
-                          discount: float,
-                          param_curr: np.ndarray | None,
-                          price_curr: np.ndarray | None
-                          ) -> np.ndarray:
+    def perform_iteration(
+        self,
+        it: int,
+        x_curr: np.ndarray,
+        x_prev: np.ndarray,
+        discount: float,
+        param_curr: np.ndarray | None,
+        price_curr: np.ndarray | None
+    ) -> np.ndarray:
         """ From param_curr get param_prev. They are obtained by linear regression of price_curr
         against previous price + previous hedge. """
         if param_curr is None:
@@ -247,10 +260,11 @@ class HMCPricer:
 
         return param_prev
 
-    def price(self,
-              x: np.ndarray,
-              strike: float
-              ) -> Tuple[float, Callable, Callable]:
+    def price(
+        self,
+        x: np.ndarray,
+        strike: float
+    ) -> Tuple[float, Callable, Callable]:
         """ Price a European Call option given several price paths X.
 
         Keyword arguments:
@@ -269,7 +283,7 @@ class HMCPricer:
         param_curr = None
         it = 1
         for n in np.arange(1, N + 1)[::-1]:
-            #             discount = np.exp(-r * T / N)  # TODO. Verify the discount, T / N or N / T ?
+            #             discount = np.exp(-r * T / N)  # TODO: Verify the discount, T / N or N / T ?
             discount = 1.0
             param_curr = self.perform_iteration(it, y[:, n], y[:, n - 1], discount, param_curr, price_curr if n == N else None)
             it += 1
@@ -280,11 +294,13 @@ class HMCPricer:
         return self.ave.avg(prices, axis=-1), lambda x: param_curr @ self.get_price(x), lambda x: param_curr @ self.get_hedge(x)
 
 
-def compute_smile(x: np.ndarray, 
-                  Ts: np.ndarray, 
-                  Ms: np.ndarray, 
-                  r: float = 0.0,
-                  ave: DiscreteProba | None = None) -> Smile:
+def compute_smile(
+    x: np.ndarray, 
+    Ts: np.ndarray, 
+    Ms: np.ndarray, 
+    r: float = 0.0,
+    ave: DiscreteProba | None = None
+) -> Smile:
     """ Compute a smile from historical price data x through Hedged Monte-Carlo (HMC). 
 
     :param x: array of shape (R, T) with R the number of price paths and T number of days
