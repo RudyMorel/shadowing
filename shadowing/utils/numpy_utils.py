@@ -3,7 +3,15 @@ from scipy.signal import convolve as sci_convolve
 
 
 def windows(x, w, s, offset=0, cover_end=False):
-    """ Separate x into windows on last axis, discard any residual. """
+    """ Extracts windows of size w with stride s from x. Discard any residual
+
+    :param x: array of shape (..., T)
+    :param w: the window size
+    :param s: the stride
+    :param offset: the starting offset
+    :param cover_end: if True, adjust the offset so that the last window covers the end of x
+    :return: array of shape (..., (T - w) // s + 1, w)
+    """
     if offset > 0 and cover_end:
         raise ValueError("No offset should be provided if cover_end is True.")
     if offset > 0:
