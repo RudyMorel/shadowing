@@ -8,3 +8,4 @@ torch
 mpire
 jupyter 
 ipykernel
+scikit-learn
