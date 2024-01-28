@@ -10,9 +10,8 @@ setuptools.setup(
     name='shadowing',
     version='1.0',
     author='Rudy Morel',
-    author_email='rudy.morel@ens.fr',
-    description=
-    'Path shadowing Monte Carlo simulation',
+    author_email='rmorel@flatironinstitute.org',
+    description='Path shadowing Monte Carlo',
     long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/RudyMorel/shadowing',
