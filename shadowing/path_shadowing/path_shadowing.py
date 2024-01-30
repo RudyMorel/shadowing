@@ -228,6 +228,9 @@ class PathShadowing:
     ) -> Tuple[np.ndarray,np.ndarray]:
         """ Agregate predictions on shadowing paths. """
 
+        # extract out-context e.g. future of log-returns for prediction
+        paths = self.context.select_out_context(paths)
+
         # define averaging operators
         empirical_proba = self.init_averaging_proba(proba_name, distances, eta)
 
@@ -272,9 +275,6 @@ class PathShadowing:
 
             # perform path shadowing (in-context)
             distances, paths = self.shadow(x_context[bs,...], k, n_dataset_splits, cuda)
-
-            # extract out-context
-            paths = self.context.select_out_context(paths)
 
             # aggregate predictions (out-context)
             res = self.predict_from_paths(distances, paths, to_predict, proba_name, eta)
