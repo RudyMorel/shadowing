@@ -318,17 +318,17 @@ def compute_smile(
         
     for i_T, T in enumerate(Ts):
 
-        x = 100.0 * x[:,:T+1] / x[:,:1]
+        xT = 100.0 * x[:,:T+1] / x[:,:1]
 
         # determine the ATM vol (needed for rescaled log-moneyness)
-        price_atm = pricer.price(x=x, strike=100.0)[0]
+        price_atm = pricer.price(x=xT, strike=100.0)[0]
         vol_atm = implied_vol(price_atm, 100.0, T/252, 100.0, r)
 
         # adapt the strike in function 
         Ks_adapted = Smile.from_M_to_K(vol_atm, T, Ms)
         
         for i_K, K in enumerate(Ks_adapted):
-            option_price = pricer.price(x=x, strike=K)[0]
+            option_price = pricer.price(x=xT, strike=K)[0]
             vol_impli[i_T, i_K] = implied_vol(option_price, K, T/252, 100.0, r)
     
     # put failed optimization to NaN

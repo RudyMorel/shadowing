@@ -3,6 +3,7 @@ from scipy.special import softmax
 
 
 class DiscreteProba:
+
     def __init__(self, weights):
         self.weights = weights
 
@@ -22,6 +23,7 @@ class DiscreteProba:
 
 
 class Softmax(DiscreteProba):
+
     def __init__(self, l2s, eta):
         weights = softmax(-l2s ** 2 / 2 / eta ** 2)
         weights /= weights.mean(-1, keepdims=True)
@@ -29,6 +31,7 @@ class Softmax(DiscreteProba):
 
 
 class Uniform(DiscreteProba):
+    
     def __init__(self):
         super(Uniform, self).__init__(None)
 
