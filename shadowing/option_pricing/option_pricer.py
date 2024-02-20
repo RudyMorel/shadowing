@@ -272,11 +272,12 @@ class HMCPricer:
         """
         N = x.shape[-1] - 1
 
-        y = x
         if self.detrend:
             dlny = np.diff(np.log(x), axis=-1)
             dlny -= dlny.mean(0, keepdims=True)
             y = PriceData(dlnx=dlny, x_init=100.0).x
+        else:
+            y = x
 
         # iterate backward to determine current params in Longstaff-Schwartz
         price_curr = (y[:, -1] - strike) * (y[:, -1] > strike)

@@ -24,7 +24,7 @@ def _dim_array(x: ArrayType) -> ArrayType:
         return x[:, None, :]
     if x.ndim == 3:
         return x
-    raise Exception("Array cannot be formatted to (B,N,T) shape.")
+    raise Exception("Array cannot be formatted to (B, C, T) shape.")
 
 
 def _torch(x: ArrayType) -> torch.Tensor:
@@ -105,9 +105,19 @@ class PathShadowing:
         cuda: bool
     ) -> Tuple[torch.Tensor,torch.Tensor]:
         """ Compute the k-smallest distances between x and y.
+        Embed each paths x -> h(x), y -> h(y) and compute all the distances
+        possible between x and y: d(h(x), h(y)),
+        where h is self.embedding, e.g. foveal multiscale
+        where d is self.distance, e.g. Euclidian distance
 
-        :param x: tensor of shape (B, C, T)
+        :param x: tensor of shape (B, C, T) 
+            --- B: batch_size, number of paths
+            --- C: data_channels, number of time-series
+            --- T: number of time-steps in a time-series
         :param y: tensor of shape (S, C, T)
+            --- S: dataset_size, number of long time-series in the dataset
+            --- C: data_channels, number of time-series
+            --- T: number of time-steps in a time-series
         :param k: number of smallest distances to keep
         :param n_splits: number of splits of the dataset
         :param cuda: if True, use cuda for accelerated computation
@@ -116,7 +126,7 @@ class PathShadowing:
         embedding = self.embedding
         distance = self.distance
 
-        n_data = x.shape[0]  # nb of data to shadow
+        n_data = x.shape[0]  # nb of time-series to shadow
         S = y.shape[0]  # dataset size: nb of long data samples in the dataset
         d = self.embedding.kernel.shape[0]  # embedding dimension
 
@@ -125,33 +135,36 @@ class PathShadowing:
             embedding = embedding.cuda()
             distance = distance.cuda()
 
+        # embed: x -> h(x)
         x = embedding(x)[:,0,:]
 
         embedding = embedding.adjust_to_context(self.context)
 
+        # the distances of closest paths and indices of the corresponding time-series in the dataset
         dists = x.new_empty(n_data, k).fill_(float("inf"))
         idces = torch.empty(n_data, k, y.ndim-1, dtype=torch.int32,device=x.device).fill_(-1)
 
-        # split the scanning for shadowing paths in the dataset
-        splits = torch.arange(S, dtype=torch.int32).split(S//n_splits)
+        # split the dataset for memory purpose
+        dataset_splits = torch.arange(S, dtype=torch.int32).split(S//n_splits)
 
-        for bs in splits:
+        for split in dataset_splits:  # split: indices of the current batch
             
             # select a batch from the dataset
-            y_batch = y[bs,...]
+            y_batch = y[split,...]
             if cuda:
                 y_batch = y_batch.cuda()
-                bs = bs.cuda()
+                split = split.cuda()
 
+            # embed: y -> h(y)
             y_batch = embedding(y_batch)
 
-            # the new batch of distances
+            # compute the distance: d(h(x), h(y)), on a batch of y
             x_unsqueeze = x.view((n_data,) + (1,)*(y.ndim-1) + (d,))
-            new_dists = distance(x_unsqueeze, y_batch[None,...])
+            new_dists = distance(x_unsqueeze, y_batch[None,...])  # on calcule la distance
 
             # get k-smallest distances on this batch
             new_dists, idces_tmp = torch.topk(new_dists.view(n_data,-1), k=k, dim=-1, largest=False)
-            cartesian_prod_idces = [bs] + [torch.arange(s, dtype=torch.int32, device=x.device) for s in y_batch.shape[1:-1]]
+            cartesian_prod_idces = [split] + [torch.arange(s, dtype=torch.int32, device=x.device) for s in y_batch.shape[1:-1]]
             new_idces = select_cartesian_product(idces_tmp.to(torch.int32), cartesian_prod_idces)
 
             # get k-smallest distances so far, including this batch
@@ -159,6 +172,10 @@ class PathShadowing:
             idces = torch.cat([idces,new_idces], dim=1)
             dists, idces_tmp = torch.topk(dists, k=k, dim=-1, largest=False)
             idces = idces[torch.arange(n_data)[:,None], idces_tmp]
+
+        if cuda:
+            dists = dists.cpu()
+            idces = idces.cpu()
 
         return dists, idces
 
@@ -190,9 +207,6 @@ class PathShadowing:
 
         # computing k-smallest distances
         d_smallest, i_smallest = self.batched_distance(x_context, x_dataset, k, n_splits, cuda)
-        if cuda:
-            d_smallest = d_smallest.cpu()
-            i_smallest = i_smallest.cpu()
 
         # collect closest paths (with their out-context)
         ts = torch.arange(x_context.shape[-1]+self.context.get_out_times(), dtype=torch.int32)
@@ -265,6 +279,9 @@ class PathShadowing:
         :param n_context_splits: context splits: increase it to reduce memory usage
         :return:
         """
+        x_context = _dim_array(x_context)
+        x_context = _torch(x_context)
+
         B = x_context.shape[0]  # nb of paths to shadow
 
         splits = torch.arange(B).split(B//n_context_splits)
