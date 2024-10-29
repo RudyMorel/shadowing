@@ -11,7 +11,7 @@ def realized_variance(x: np.ndarray, Ts: Iterable, vol: bool):
     :return: array (..., len(Ts))
     """
     x2 = x ** 2
-    r_variance = np.stack([x2[..., :T].mean((-1,-2)) for T in Ts], -1) * 252
+    r_variance = np.stack([x2[..., :T].mean(-1) for T in Ts], -1) * 252
     if vol:
         return r_variance ** 0.5
     return r_variance
