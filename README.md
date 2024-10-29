@@ -1,8 +1,8 @@
 # Path Shadowing Monte Carlo
 
-Implements Path Shadowing Monte-Carlo [1], which can be used for volatility prediction and option pricing.
+Implements Path Shadowing Monte Carlo [1], which can be used for volatility prediction and option pricing.
 
-This methods averages future quantities over generated price paths (grey) whose past history matches, or `shadows', the actual observed history (red).
+This methods averages future quantities over generated price paths (grey) whose past history matches, or `shadows', the actual observed history (blue).
 
 For a quick start, see `tutorial.ipynb`
 
@@ -10,7 +10,7 @@ For a quick start, see `tutorial.ipynb`
     <img src="./illustration/anim_shadowing.gif" alt="animated" width="400px"/>
 </p>
 <p align="center">
-    <b>Path Shadowing: find close paths in a generated dataset.</b>
+    <b>Path Shadowing: finding close paths in a generated dataset.</b>
 </p>
 
 
@@ -21,15 +21,13 @@ The code requires python>=3.10. Run the commands below to install the required p
 git clone https://github.com/RudyMorel/shadowing
 cd shadowing/
 python -m venv ~/venvs/shadowing
+source ~/venvs/shadowing/bin/activate
 pip install -r exact_requirements.txt
 ```
 
 ## Path Shadowing 
 
-On a given date, path shadowing involves scanning over generated price paths whose past history matches, 
-or `shadows`, the actual observed past history (blue in the GIF above).
-Generated price paths can be obtained in a Scattering Spectra model [2] 
-with the script `snp_generation.py`
+On a given date, path shadowing involves scanning through generated price paths whose past history matches, or shadows, the actual observed past history (blue). These generated price paths can be produced using the Scattering Spectra model [2] with the script snp_generation.py.
 
 
 ```python
@@ -64,7 +62,7 @@ plot_shadow(dlnx_current, distances[0,:], close_paths[0,:,:,:], eta=0.09, date=s
 ```
 
 <div align="center">
-    <img src="illustration/shadowing.png" alt="Shadow of a path">
+    <img src="illustration/shadowing.png" alt="Shadow of a path" width="400px"/>
 </div>
 <p align="center">
     <b>Shadow of a path.</b>
@@ -98,16 +96,16 @@ plot_volatility(dlnx_current, (vols[-1,:] / 252) ** 0.5, Ts, date=snp.dts[-1], c
 ```
 
 <div align="center">
-    <img src="illustration/vol_prediction.png" alt="Volatility prediction" title="Volatility prediction" width="500">
+    <img src="illustration/vol_prediction.png" alt="Volatility prediction" title="Volatility prediction" width="400px"/>
 </div>
 <p align="center">
-    <b>Volatility prediction obtained through Path Shadowing Monte Carlo.</b>
+    <b>Volatility prediction obtained with Path Shadowing Monte Carlo.</b>
 </p>
 
 ## Option pricing 
 
 In the same way, one can price options on the collected close paths through 
-Hedge Monte-Carlo [3]
+Path Shadowing (hedged) Monte Carlo [3]
 
 ```python
 from scatspectra import Softmax, PriceData, compute_smile
@@ -130,7 +128,7 @@ plt.xlabel(r"$\mathcal{M}$", fontsize=20);
 ```
 
 <p align="center">
-    <img src="./illustration/smile.png" alt="Conditional smile" title="Conditional smile" width="500">
+    <img src="./illustration/smile.png" alt="Conditional smile" title="Conditional smile" width="400px"/>
 </p>
 <p align="center">
     <b>Option smile obtained through Path Shadowing (hedged) Monte Carlo.</b>
@@ -139,20 +137,13 @@ plt.xlabel(r"$\mathcal{M}$", fontsize=20);
 See `tutorial.ipynb` for more advanced examples.
 
 
-# Generation 
-
-The paper uses the Scattering Spectra [2] to generate the dataset of time-series.
-
-[1] "Path Shadowing Monte-Carlo"
-
+[1] "Path Shadowing Monte Carlo" \
 Rudy Morel et al. - https://arxiv.org/abs/2308.01486
 
-[2] "Scale Dependencies and Self-Similar Models with Wavelet Scattering Spectra"
-
+[2] "Scale Dependencies and Self-Similar Models with Wavelet Scattering Spectra" \
 Rudy Morel et al. - https://arxiv.org/abs/2204.10177
 
-[3] "Hedged Monte-Carlo: low variance derivative pricing with objective probabilities"
-
+[3] "Hedged Monte-Carlo: low variance derivative pricing with objective probabilities" \
 M. Potters, J.-P. Bouchaud, D. Sestovic - https://arxiv.org/abs/cond-mat/0008147
 
 

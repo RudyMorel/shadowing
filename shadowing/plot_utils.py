@@ -99,7 +99,17 @@ def plot_shadow(
         plt.title(r'$\mathrm{' + date.strftime('%Y/%m/%d') + '}$', fontsize=20, color=color)
 
 
-def plot_volatility(dlnx_current, standard_dev, Ts, date=None, color='blue', color_vol='black'):
+def plot_volatility(
+    dlnx_current: np.ndarray, 
+    standard_dev: np.ndarray, 
+    Ts: list | np.ndarray, 
+    distances: np.ndarray, 
+    close_paths: np.ndarray, 
+    eta: float, 
+    date=None, 
+    color='blue', 
+    color_vol='black'
+) -> None:
     """ Plot the predicted volatility vols of the current history dlnx_current
     
     :param dlnx_current: 1d array, the current log-return time-sries
@@ -107,15 +117,26 @@ def plot_volatility(dlnx_current, standard_dev, Ts, date=None, color='blue', col
     :param Ts: list of int, the horizons of the predicted volatilities
     :param date: pandas datetime, the date of the current log-return time-series
     :param color: str, the color of the current time-series
+    :param color_vol: str, the color of the predicted volatilities
     . """
 
     # infer horizon
     w_past = dlnx_current.shape[-1]
-    horizon = max(Ts)
+    horizon = close_paths.shape[-1] - w_past
+
+    # the proba used to average 
+    proba = Softmax(distances=distances, eta=eta)
+    mean = proba.avg(close_paths, axis=0)[0,:]
+    std = proba.std(close_paths, axis=0)[0,:]
+    
+    # the shadow lower-bound and upper-bound
+    lower_bound = mean - std
+    upper_bound = mean + std
 
     # plot 
     plt.figure(figsize=(4,2))
     plt.plot(np.arange(-w_past+1,1), dlnx_current, color=color, label=r'$\mathrm{present}$')
+    plt.fill_between(np.arange(-w_past+1,1),lower_bound[:w_past], upper_bound[:w_past], color='gray', alpha=0.5, label=r'$\mathrm{shadow}$');
     for i_T, T in enumerate(Ts):
         label = r'$\mathrm{vol~prediction}$' if i_T == 0 else None
         plt.fill_between(np.arange(T+1), -standard_dev[i_T], standard_dev[i_T], color=color_vol, alpha=0.1, label=label)
