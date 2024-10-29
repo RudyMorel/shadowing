@@ -99,7 +99,7 @@ def plot_shadow(
         plt.title(r'$\mathrm{' + date.strftime('%Y/%m/%d') + '}$', fontsize=20, color=color)
 
 
-def plot_volatility(dlnx_current, standard_dev, Ts, date=None, color='blue'):
+def plot_volatility(dlnx_current, standard_dev, Ts, date=None, color='blue', color_vol='black'):
     """ Plot the predicted volatility vols of the current history dlnx_current
     
     :param dlnx_current: 1d array, the current log-return time-sries
@@ -116,10 +116,9 @@ def plot_volatility(dlnx_current, standard_dev, Ts, date=None, color='blue'):
     # plot 
     plt.figure(figsize=(4,2))
     plt.plot(np.arange(-w_past+1,1), dlnx_current, color=color, label=r'$\mathrm{present}$')
-    print(standard_dev.shape)
     for i_T, T in enumerate(Ts):
         label = r'$\mathrm{vol~prediction}$' if i_T == 0 else None
-        plt.fill_between(np.arange(T+1), -standard_dev[i_T], standard_dev[i_T], color='black', alpha=0.1, label=label)
+        plt.fill_between(np.arange(T+1), -standard_dev[i_T], standard_dev[i_T], color=color_vol, alpha=0.1, label=label)
     plt.grid(None)
     ylim = np.abs(dlnx_current).max() * 1.1
     plt.ylim(-ylim,ylim)
