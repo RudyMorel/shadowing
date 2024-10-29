@@ -1,17 +1,16 @@
 """ Multiprocessed Path Shadowing: scanning over a generated dataset of trajectories. """
-from typing import Callable, Tuple, List
+from typing import Callable
 from pathlib import Path
 import numpy as np
 import torch
 from einops import rearrange
 from tqdm import tqdm
 
-from shadowing.utils import Softmax, Uniform, DiscreteProba
+from scatspectra import TimeSeriesDataset, Softmax, Uniform, DiscreteProba
 from shadowing.path_shadowing.path_embedding import (
-    PathEmbedding, ContextBase, PredictionContext, ArrayType
+    PathEmbedding, ContextManagerBase, PredictionContext, ArrayType
 )
 from shadowing.path_shadowing.path_distance import PathDistance
-from scatspectra.data_source import TimeSeriesDataset
 
 
 def _dim_array(x: ArrayType) -> ArrayType:
@@ -43,7 +42,7 @@ def _numpy(x: ArrayType) -> np.ndarray:
 
 def select_cartesian_product(
     indices: torch.Tensor, 
-    tensors: List[torch.Tensor]
+    tensors: list[torch.Tensor]
 ) -> torch.Tensor:
     """ Select the cartesian product of the tensors at the given indices.
     This is equivalent to torch.cartesian_prod(*tensors)[indices] but does not 
@@ -64,15 +63,14 @@ class PathShadowing:
 
     Path Shadowing consists in scanning over a generated dataset of paths for 
     paths which are close to the observed context (e.g. past log-returns).
-    It provides functionality for calculating the proximity between paths 
-    and selecting the cartesian product of tensors.
+    It provides functionality for calculating the proximity between paths.
 
     Attributes:
         - embedding: reduces the dimensionality of a path
         - distance: measures distance between embedded paths
         - dataset: the dataset used for scanning for shadowing paths
         - context: specify what is shadowed and what is predicted 
-            (e.g. prediction: in-context=past, our-context=future)
+            (e.g. prediction: in-context=past, out-context=future)
     """
 
     def __init__(
@@ -80,9 +78,9 @@ class PathShadowing:
         embedding: PathEmbedding,
         distance: PathDistance,
         dataset: ArrayType | Path | TimeSeriesDataset,
-        context: ContextBase | None = None,
+        context: ContextManagerBase | None = None,
     ):
-        # dataset used to scan for shadowing paths 
+        # dataset to scan for shadowing paths 
         if isinstance(dataset, Path):
             dataset = TimeSeriesDataset(dpath=dataset, R=None).load()
         if isinstance(dataset, TimeSeriesDataset):
@@ -93,7 +91,7 @@ class PathShadowing:
         self.embedding = embedding
         self.distance = distance
 
-        # initialize context object
+        # initialize context object: tells what to shadow in the context data
         self.context = context or PredictionContext(horizon=None)
 
     def batched_distance(
@@ -103,10 +101,10 @@ class PathShadowing:
         k: int, 
         n_splits: int, 
         cuda: bool
-    ) -> Tuple[torch.Tensor,torch.Tensor]:
+    ) -> tuple[torch.Tensor,torch.Tensor]:
         """ Compute the k-smallest distances between x and y.
-        Embed each paths x -> h(x), y -> h(y) and compute all the distances
-        possible between x and y: d(h(x), h(y)),
+        Embed paths x -> h(x), y -> h(y) and retain 
+        the k smallest distances d(h(x),h(y))
         where h is self.embedding, e.g. foveal multiscale
         where d is self.distance, e.g. Euclidian distance
 
@@ -129,6 +127,7 @@ class PathShadowing:
         n_data = x.shape[0]  # nb of time-series to shadow
         S = y.shape[0]  # dataset size: nb of long data samples in the dataset
         d = self.embedding.kernel.shape[0]  # embedding dimension
+        d = d if d != 0 else x.shape[-1]  # if embedding is the identity, use the data dimension
 
         if cuda:
             x = x.cuda()
@@ -142,7 +141,7 @@ class PathShadowing:
 
         # the distances of closest paths and indices of the corresponding time-series in the dataset
         dists = x.new_empty(n_data, k).fill_(float("inf"))
-        idces = torch.empty(n_data, k, y.ndim-1, dtype=torch.int32,device=x.device).fill_(-1)
+        idces = torch.empty(n_data, k, y.ndim-1, dtype=torch.int32, device=x.device).fill_(-1)
 
         # split the dataset for memory purpose
         dataset_splits = torch.arange(S, dtype=torch.int32).split(S//n_splits)
@@ -160,7 +159,7 @@ class PathShadowing:
 
             # compute the distance: d(h(x), h(y)), on a batch of y
             x_unsqueeze = x.view((n_data,) + (1,)*(y.ndim-1) + (d,))
-            new_dists = distance(x_unsqueeze, y_batch[None,...])  # on calcule la distance
+            new_dists = distance(x_unsqueeze, y_batch[None,...])
 
             # get k-smallest distances on this batch
             new_dists, idces_tmp = torch.topk(new_dists.view(n_data,-1), k=k, dim=-1, largest=False)
@@ -171,7 +170,7 @@ class PathShadowing:
             dists = torch.cat([dists, new_dists], dim=1)
             idces = torch.cat([idces,new_idces], dim=1)
             dists, idces_tmp = torch.topk(dists, k=k, dim=-1, largest=False)
-            idces = idces[torch.arange(n_data)[:,None], idces_tmp]
+            idces = idces[torch.arange(n_data, dtype=torch.int32)[:,None], idces_tmp]
 
         if cuda:
             dists = dists.cpu()
@@ -185,7 +184,7 @@ class PathShadowing:
         k: int = 1,
         n_splits: int = 1,
         cuda: bool = False
-    ) -> Tuple[np.ndarray,np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """ Perform path shadowing on x_context with data from the dataset:
         scan the dataset for paths that are close to x_context. 
 
@@ -194,7 +193,7 @@ class PathShadowing:
         :param n_splits: dataset splits: increase it to reduce memory usage
         :param cuda: if True, use cuda for accelerated computation
         """
-        if self.embedding.kernel.shape[-1] != x_context.shape[-1]:
+        if self.embedding.kernel.shape[-1] != 0 and self.embedding.kernel.shape[-1] != x_context.shape[-1]:
             raise Exception("The embedding kernel should be of the same size as the context.")
 
         # data to "shadow"
@@ -216,13 +215,13 @@ class PathShadowing:
         paths_smallest = x_dataset[:,indices]
         paths_smallest = rearrange(paths_smallest, 'c b k t -> b k c t')
 
-        return _numpy(d_smallest), _numpy(paths_smallest)
+        return _numpy(d_smallest), _numpy(paths_smallest), _numpy(i_smallest)
     
     @staticmethod
     def init_averaging_proba(
         proba_name: str,
         distances: np.ndarray,
-        eta: float
+        eta: float | None
     ) -> DiscreteProba:
         """ The averaging probability used for averaging out-context predictions. """
         if proba_name == "uniform":
@@ -238,17 +237,17 @@ class PathShadowing:
         paths: np.ndarray,
         to_predict: Callable,
         proba_name: str,
-        eta: float
-    ) -> Tuple[np.ndarray,np.ndarray]:
+        eta: float | None
+    ) -> tuple[np.ndarray, np.ndarray]:
         """ Agregate predictions on shadowing paths. """
 
         # extract out-context e.g. future of log-returns for prediction
         paths = self.context.select_out_context(paths)
 
         # define averaging operators
-        empirical_proba = self.init_averaging_proba(proba_name, distances, eta)
+        empirical_proba = self.init_averaging_proba(proba_name, distances[:,:,None], eta)
 
-        # get prediction through average
+        # get prediction through weighted average on shadowing paths
         predictions = empirical_proba.avg(to_predict(paths), axis=1)
         predictions_std = empirical_proba.std(to_predict(paths), axis=1)
 
@@ -259,12 +258,12 @@ class PathShadowing:
         x_context: ArrayType,
         k: int,
         to_predict: Callable,
-        eta: float,
+        eta: float | None = None,
         proba_name: str = "softmax",
         n_dataset_splits: int = 1,
         n_context_splits: int = 1,
         cuda: bool = False
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Prediction on shadowing paths. Obtained by averaging out-context data
         from shadowing paths whose in-context, matches, or "shadows", 
@@ -291,7 +290,7 @@ class PathShadowing:
         for bs in tqdm(splits):
 
             # perform path shadowing (in-context)
-            distances, paths = self.shadow(x_context[bs,...], k, n_dataset_splits, cuda)
+            distances, paths, _ = self.shadow(x_context[bs,...], k, n_dataset_splits, cuda)
 
             # aggregate predictions (out-context)
             res = self.predict_from_paths(distances, paths, to_predict, proba_name, eta)
