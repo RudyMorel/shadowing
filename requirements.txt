@@ -1,13 +1,2 @@
+# other requirements are in the scatspectra package
 einops
-ipykernel
-jupyter
-matplotlib
-numpy
-pandas
-pyarrow
-git+https://github.com/RudyMorel/scattering_spectra
-scikit-learn
-scipy
-termcolor
-torch
-tqdm

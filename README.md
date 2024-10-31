@@ -22,6 +22,7 @@ git clone https://github.com/RudyMorel/shadowing
 cd shadowing/
 python -m venv ~/venvs/shadowing
 source ~/venvs/shadowing/bin/activate
+pip install git+https://github.com/RudyMorel/scattering_spectra@v2.0.1
 pip install -r exact_requirements.txt
 ```
 
