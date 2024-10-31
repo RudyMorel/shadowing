@@ -15,15 +15,11 @@ For a quick start, see `tutorial.ipynb`
 
 
 ## Installation 
-The code requires python>=3.10. Run the commands below to install the required packages.
+From a venv with python>=3.10 run the commands below to install the required packages.
 
 ```bash
-git clone https://github.com/RudyMorel/shadowing
-cd shadowing/
-python -m venv ~/venvs/shadowing
-source ~/venvs/shadowing/bin/activate
 pip install git+https://github.com/RudyMorel/scattering_spectra@v2.0.1
-pip install -r exact_requirements.txt
+pip install git+https://github.com/RudyMorel/shadowing
 ```
 
 ## Path Shadowing 
