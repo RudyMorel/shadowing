@@ -8,7 +8,7 @@ with open('requirements.txt') as f:
 
 setuptools.setup(
     name='shadowing',
-    version='2.0.0',
+    version='2.0.1',
     author='Rudy Morel',
     author_email='rmorel@flatironinstitute.org',
     description='Path shadowing Monte Carlo',

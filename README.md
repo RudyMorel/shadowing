@@ -18,7 +18,7 @@ For a quick start, see `tutorial.ipynb`
 From a venv with python>=3.10 run the commands below to install the required packages.
 
 ```bash
-pip install git+https://github.com/RudyMorel/scattering_spectra@v2.0.1
+pip install git+https://github.com/RudyMorel/scattering_spectra@v2.0.2
 pip install git+https://github.com/RudyMorel/shadowing
 ```
 

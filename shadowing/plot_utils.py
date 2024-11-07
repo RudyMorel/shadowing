@@ -101,20 +101,22 @@ def plot_shadow(
 
 def plot_volatility(
     dlnx_current: np.ndarray, 
-    standard_dev: np.ndarray, 
+    vol_predictions: np.ndarray, 
     Ts: list | np.ndarray, 
-    distances: np.ndarray, 
-    close_paths: np.ndarray, 
-    eta: float, 
+    distances: np.ndarray | None = None, 
+    close_paths: np.ndarray | None = None, 
+    eta: float | None = None, 
     date=None, 
     color='blue', 
     color_vol='black'
 ) -> None:
-    """ Plot the predicted volatility vols of the current history dlnx_current
+    """ Plot the predicted volatilities for the current history dlnx_current.
+    The volatilities are plotted as the standard deviations (normalization factor 1/sqrt(252)).
+    If distances and close_paths are provided, also plots the shadow of the current history in the past.
     
     :param dlnx_current: 1d array, the current log-return time-sries
-    :param vols: 2d array (len(Ts), T), the predicted volatilities
-    :param Ts: list of int, the horizons of the predicted volatilities
+    :param vol_predictions: 2d array (len(Ts), T), the predicted volatilities on the provided maturities
+    :param Ts: list of int, the maturities (horizons) of the predicted volatilities
     :param date: pandas datetime, the date of the current log-return time-series
     :param color: str, the color of the current time-series
     :param color_vol: str, the color of the predicted volatilities
@@ -122,24 +124,31 @@ def plot_volatility(
 
     # infer horizon
     w_past = dlnx_current.shape[-1]
-    horizon = close_paths.shape[-1] - w_past
+    horizon = close_paths.shape[-1] - w_past if close_paths is not None else max(Ts)
 
-    # the proba used to average 
-    proba = Softmax(distances=distances, eta=eta)
-    mean = proba.avg(close_paths, axis=0)[0,:]
-    std = proba.std(close_paths, axis=0)[0,:]
-    
-    # the shadow lower-bound and upper-bound
-    lower_bound = mean - std
-    upper_bound = mean + std
+    # the proba used to compute the shadow in the past 
+    if distances is not None:
+        proba = Softmax(distances=distances, eta=eta)
+        mean_past = proba.avg(close_paths, axis=0)[0,:]
+        std_past = proba.std(close_paths, axis=0)[0,:]
+
+        # the shadow lower-bound and upper-bound
+        lower_bound = mean_past - std_past
+        upper_bound = mean_past + std_past
+
+        print(lower_bound.shape)
+
+    # go from vol to standard deviations
+    std_predictions = vol_predictions / np.sqrt(252)
 
     # plot 
     plt.figure(figsize=(4,2))
     plt.plot(np.arange(-w_past+1,1), dlnx_current, color=color, label=r'$\mathrm{present}$')
-    plt.fill_between(np.arange(-w_past+1,1),lower_bound[:w_past], upper_bound[:w_past], color='gray', alpha=0.5, label=r'$\mathrm{shadow}$');
+    if distances is not None:
+        plt.fill_between(np.arange(-w_past+1,1), lower_bound[:w_past], upper_bound[:w_past], color='gray', alpha=0.5, label=r'$\mathrm{shadow}$');
     for i_T, T in enumerate(Ts):
         label = r'$\mathrm{vol~prediction}$' if i_T == 0 else None
-        plt.fill_between(np.arange(T+1), -standard_dev[i_T], standard_dev[i_T], color=color_vol, alpha=0.1, label=label)
+        plt.fill_between(np.arange(T+1), -std_predictions[i_T], std_predictions[i_T], color=color_vol, alpha=0.1, label=label)
     plt.grid(None)
     ylim = np.abs(dlnx_current).max() * 1.1
     plt.ylim(-ylim,ylim)
