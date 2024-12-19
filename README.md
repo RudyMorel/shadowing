@@ -80,7 +80,7 @@ Ts = np.array([5,10,20])  # the time scales at which we want to predict the vola
 to_predict = lambda x: realized_variance(x, Ts=Ts, vol=False)[:,:,0,:]
 
 # now aggreate predictions on the 1024 closest paths with a weighted average
-vols, _ = obj.predict_from_paths(
+vars, _ = obj.predict_from_paths(
     distances,
     close_paths,
     to_predict=to_predict,
@@ -89,7 +89,7 @@ vols, _ = obj.predict_from_paths(
 )
 
 # helper function for plotting vol predictions
-plot_volatility(dlnx_current, (vols[-1,:] / 252) ** 0.5, Ts, date=snp.dts[-1], color='blue')
+plot_volatility(dlnx_current, (vars[0,:]**0.5), Ts, distances[0,:], close_paths[0,...], eta=0.09, date=snp.dts[-1], color='blue')
 ```
 
 <div align="center">

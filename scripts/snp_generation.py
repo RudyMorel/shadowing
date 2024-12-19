@@ -18,7 +18,6 @@ def get_args():
     parser.add_argument('-J', type=int, default=9, help="Number of scales")
     parser.add_argument('-R', type=int, default=32768, help="Number of realizations")
     parser.add_argument('--epsilon', type=float, default=1e-2, help="Tolerance for optimization")
-    parser.add_argument('--verbose', action='store_true', help="Print optimization details")
 
     args = parser.parse_args()
 
@@ -45,7 +44,7 @@ if __name__ == "__main__":
         tol_optim=args.epsilon,
         max_iterations=1000,
         cache_path=GEN_PATH,
-        verbose=args.verbose,
+        verbose=True,           # can deactivate if too many prints
         load_cache=False,
         cuda=True,
     )
